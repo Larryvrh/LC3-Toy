@@ -1,21 +1,23 @@
 from Annotations import *
 from re import compile as reCompile, sub
-from EmuUtil import decToBin, binToDec, bitModified
+from LC3Emu_Util import decToBin, binToDec, bitModified
 
 # Regular opcodes
 OPCODEs = ['ADD', 'AND', 'JMP', 'JSR', 'JSRR', 'LD', 'LDI', 'LDR', 'LEA', 'NOT', 'RET', 'RTI', 'ST', 'STI', 'STR', 'TRAP']
 # Branch opcodes
 OPCODEs += ['BRnzp', 'BRnz', 'BRnp', 'BRzp', 'BRn', 'BRz', 'BRp', 'BR']
-# Assembler directives
-OPCODEs += ['.ORIG', '.END', '.FILL', '.BLKW', '.STRINGZ']
 # Trap Alias
 OPCODEs += ['HALT', 'IN', 'OUT', 'GETC', 'PUTS']
+# Real opcodes
+realOPCODEs = OPCODEs.copy()
+# Assembler directives
+OPCODEs += ['.ORIG', '.END', '.FILL', '.BLKW', '.STRINGZ']
 
 # Regex pattern for matching OPCODE
 opCodePattern = '|'.join(OPCODEs).replace('.', '\\.')
 
 # Regex pattern for parse assembly line.
-pattern = reCompile('^(?!' + opCodePattern + ')(?P<LABEL>\S+)?\s+(?P<OPCODE>' + opCodePattern + ')' + '(\s+(?P<OPERANDS>.*))?')
+pattern = reCompile(f'(^(?!{opCodePattern})(?P<LABEL>\S+))?\s*(?P<OPCODE>{opCodePattern})?' + '(\s+(?P<OPERANDS>.*))?')
 
 
 def parseNumber(num: Str) -> Int:
@@ -53,7 +55,7 @@ def handleDirective(lineDetail: Dict) -> Union[Int, List[Int]]:
     elif (lineDetail['OPCODE'] == '.BLKW'):
         return [0 for _ in range(parseNumber(lineDetail['OPERAND']))]
     elif (lineDetail['OPCODE'] == '.STRINGZ'):
-        return [ord(i) for i in lineDetail['OPERAND'][1:-1]] + [0]
+        return [ord(i) for i in lineDetail['OPERANDS'][1:-1]] + [0]
 
 
 def makeInstruction(template: Str, *args: List[Int]) -> Int:
@@ -120,9 +122,33 @@ def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
     return 0
 
 
+def buildAddressTable(lineInfos: Dict):
+    baseAddr, occupiedBytes = (0, 0x3000), 0
+    symbolTable = {}
+    for i, lineDetail in enumerate(lineInfos):
+        lineDetail.update({'ADDR': occupiedBytes})
+        opCode = lineDetail['OPCODE']
+        if (opCode == '.ORIG'):
+            baseAddr = (i, parseNumber(lineDetail['OPERANDS']))
+            continue
+        elif (opCode in realOPCODEs):
+            occupiedBytes += 1
+        elif (opCode == '.FILL'):
+            occupiedBytes += 1
+        elif (opCode == '.BLKW'):
+            occupiedBytes += parseNumber(lineDetail['OPERANDS'])
+        elif (opCode == '.STRINGZ'):
+            occupiedBytes += len(lineDetail['OPERANDS']) - 1
+    for lineDetail in lineInfos:
+        lineDetail['ADDR'] += (baseAddr[1] - baseAddr[0])
+        if (lineDetail['LABEL'] != None):
+            symbolTable[lineDetail['LABEL']] = lineDetail['ADDR']
+    return symbolTable
+
+
 def parseAssembly(asmLines: Str):
     # Clean out the comment information
-    asmLines = sub('\s*;;.*', '', asmLines)
+    asmLines = sub('\s*;.*', '', asmLines)
     # Split code into lines
     lines, lineInfos = asmLines.split('\n'), []
     # Program start index and address
@@ -132,21 +158,22 @@ def parseAssembly(asmLines: Str):
         matched = pattern.match(line)
         if (matched == None): continue
         lineDetail = matched.groupdict()
+        if (set(lineDetail.values()) == {None}): continue
         # Search for start index and address
         if (lineDetail['OPCODE'] == '.ORIG'):
             assert startAddress == (0, 0x3000)
             startAddress = (len(lineInfos), parseNumber(lineDetail['OPERANDS']))
         # Finish parsing
         lineInfos.append(lineDetail)
+    # print('>',lineInfos)
     # Build symbols table TODO: Need to be fixed for multi-byte allocation
-    symbolTable, offset = {}, 0
-    for index, line in enumerate(lineInfos):
-        if line['LABEL'] is None: continue
-        symbolTable[line['LABEL']] = startAddress[1] + (index - startAddress[0]) + offset
+    symbolTable = buildAddressTable(lineInfos)
     machineCodes = []
     # Translate operation into machine codes
     for index, lineDetail in enumerate(lineInfos):
-        if (lineDetail['OPCODE'] == '.ORIG'):
+        if (lineDetail['OPCODE'] == None):
+            continue
+        elif (lineDetail['OPCODE'] == '.ORIG'):
             continue
         elif (lineDetail['OPCODE'] == '.END'):
             break
@@ -157,7 +184,7 @@ def parseAssembly(asmLines: Str):
             else:
                 machineCodes += result
         else:
-            machineCodes.append(handleInstruction(lineDetail, symbolTable, startAddress[1] + (index - startAddress[0])))
+            machineCodes.append(handleInstruction(lineDetail, symbolTable, lineDetail['ADDR']))
     print('[' + ','.join([(hex(i)) for i in machineCodes]) + ']')
 
 
