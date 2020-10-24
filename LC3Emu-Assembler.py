@@ -71,7 +71,7 @@ def makeInstruction(template: Str, *args: List[Int]) -> Int:
 def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
     operandFormat = parseOperandsFormat(lineDetail['OPERANDS'])
     realOperands = parseOperands(lineDetail['OPERANDS'], symbolTable)
-    #print(lineDetail, operandFormat, realOperands, lineno)
+    # print(lineDetail, operandFormat, realOperands, lineno)
     if (lineDetail['OPCODE'] == 'ADD'):
         if (operandFormat == 'RRR'):
             return makeInstruction('0001[0,3~][1,3~]000[2,3~]', *realOperands)
@@ -84,6 +84,8 @@ def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
             return makeInstruction('0101[0,3~][1,3~]1[2,5]', *realOperands)
     elif (lineDetail['OPCODE'].startswith('BR')):
         nzpFlags = binToDec(''.join(['1' if i in lineDetail['OPCODE'] else '0' for i in 'nzp']), True)
+        if (lineDetail['OPCODE'] == 'BR'):
+            nzpFlags = binToDec('111', True)
         return makeInstruction('0000[0,3~][1,9]', nzpFlags, realOperands[0] - lineno - 1)
     elif (lineDetail['OPCODE'] == 'JMP'):
         return makeInstruction('1100000[0,3~]000000', *realOperands)
@@ -156,8 +158,8 @@ def parseAssembly(asmLines: Str):
                 machineCodes += result
         else:
             machineCodes.append(handleInstruction(lineDetail, symbolTable, startAddress[1] + (index - startAddress[0])))
-    [print(hex(i)) for i in machineCodes]
+    print('[' + ','.join([(hex(i)) for i in machineCodes]) + ']')
 
 
-with open('Test.asm', 'r') as sourceFile:
+with open('Test.asm', 'r', encoding='utf-8') as sourceFile:
     parseAssembly(sourceFile.read())
