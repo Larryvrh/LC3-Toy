@@ -33,7 +33,7 @@ def parseNumber(num: Str) -> Int:
         return int(num)
 
 
-def parseOperands(operand: Str, symbolTable) -> List[Int]:
+def parseOperands(operand: Str, symbolTable,lineNo) -> List[Int]:
     if (operand == None): return []
     # Clear out spaces from operand and split it
     operandSubs = operand.replace(' ', '').split(',')
@@ -44,7 +44,7 @@ def parseOperands(operand: Str, symbolTable) -> List[Int]:
         elif (op[0] in ['x', '#']):
             realOperands.append(parseNumber(op))
         else:
-            realOperands.append(symbolTable[op])
+            realOperands.append(symbolTable[op] - lineNo - 1)
     return realOperands
 
 
@@ -79,7 +79,7 @@ def makeInstruction(template: Str, *args: List[Int]) -> Int:
 
 def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
     operandFormat = parseOperandsFormat(lineDetail['OPERANDS'])
-    realOperands = parseOperands(lineDetail['OPERANDS'], symbolTable)
+    realOperands = parseOperands(lineDetail['OPERANDS'], symbolTable,lineno)
     # print(lineDetail, operandFormat, realOperands, lineno)
     if (lineDetail['OPCODE'] == 'ADD'):
         if (operandFormat == 'RRR'):
@@ -95,33 +95,33 @@ def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
         nzpFlags = binToDec(''.join(['1' if i in lineDetail['OPCODE'] else '0' for i in 'nzp']), True)
         if (lineDetail['OPCODE'] == 'BR'):
             nzpFlags = binToDec('111', True)
-        return makeInstruction('0000[0,3~][1,9]', nzpFlags, realOperands[0] - lineno - 1)
+        return makeInstruction('0000[0,3~][1,9]', nzpFlags, realOperands[0])
     elif (lineDetail['OPCODE'] == 'JMP'):
         return makeInstruction('1100000[0,3~]000000', *realOperands)
     elif (lineDetail['OPCODE'] == 'RET'):
         return makeInstruction('1100000[0,3~]000000', 7)
     elif (lineDetail['OPCODE'] == 'JSR'):
-        return makeInstruction('01001[0,11]', realOperands[0] - lineno - 1)
+        return makeInstruction('01001[0,11]', realOperands[0])
     elif (lineDetail['OPCODE'] == 'JSRR'):
         return makeInstruction('0100000[0,3~]000000', *realOperands)
     elif (lineDetail['OPCODE'] == 'LD'):
-        return makeInstruction('0010[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+        return makeInstruction('0010[0,3~][1,9]', realOperands[0], realOperands[1])
     elif (lineDetail['OPCODE'] == 'LDI'):
-        return makeInstruction('1010[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+        return makeInstruction('1010[0,3~][1,9]', realOperands[0], realOperands[1])
     elif (lineDetail['OPCODE'] == 'LDR'):
-        return makeInstruction('0110[0,3~][0,3~][1,6]', realOperands[0], realOperands[1], realOperands[2] - lineno - 1)
+        return makeInstruction('0110[0,3~][1,3~][2,6]', realOperands[0], realOperands[1], realOperands[2])
     elif (lineDetail['OPCODE'] == 'LEA'):
-        return makeInstruction('1110[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+        return makeInstruction('1110[0,3~][1,9]', realOperands[0], realOperands[1])
     elif (lineDetail['OPCODE'] == 'NOT'):
-        return makeInstruction('1001[0,3~][0,3~]111111', realOperands[0], realOperands[1])
+        return makeInstruction('1001[0,3~][1,3~]111111', realOperands[0], realOperands[1])
     elif (lineDetail['OPCODE'] == 'RTI'):
         return makeInstruction('1000000000000000')
     elif (lineDetail['OPCODE'] == 'ST'):
-        return makeInstruction('0011[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+        return makeInstruction('0011[0,3~][1,9]', realOperands[0], realOperands[1])
     elif (lineDetail['OPCODE'] == 'STI'):
-        return makeInstruction('1011[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+        return makeInstruction('1011[0,3~][1,9]', realOperands[0], realOperands[1])
     elif (lineDetail['OPCODE'] == 'STR'):
-        return makeInstruction('0111[0,3~][0,3~][1,6]', realOperands[0], realOperands[1], realOperands[2] - lineno - 1)
+        return makeInstruction('0111[0,3~][1,3~][2,6]', realOperands[0], realOperands[1], realOperands[2])
     elif (lineDetail['OPCODE'] == 'TRAP'):
         return makeInstruction('11110000[0,8~]', realOperands[0])
     elif (lineDetail['OPCODE'] == 'HALT'):
@@ -158,8 +158,6 @@ def parseAssembly(asmLines: Str):
     asmLines = sub('\s*;.*', '', asmLines)
     # Split code into lines
     lines, lineInfos = asmLines.split('\n'), []
-    # Program start index and address
-    startAddress = (0, 0x3000)
     # Matched tokens for lines
     for line in lines:
         matched = pattern.match(line)
@@ -168,14 +166,9 @@ def parseAssembly(asmLines: Str):
         # print(lineDetail)
         if (set(lineDetail.values()) == {None}): continue
         # print(line, '\n', lineDetail)
-        # Search for start index and address
-        if (lineDetail['OPCODE'] == '.ORIG'):
-            assert startAddress == (0, 0x3000)
-            startAddress = (len(lineInfos), parseNumber(lineDetail['OPERANDS']))
         if (lineDetail['LABEL'] != None and lineDetail['LABEL'][-1] == ':'):
             lineDetail['LABEL'] = lineDetail['LABEL'][:-1]
         # Finish parsing
-        print(lineDetail)
         lineInfos.append(lineDetail)
     # print('>',lineInfos)
     # Build symbols table TODO: Need to be fixed for multi-byte allocation
