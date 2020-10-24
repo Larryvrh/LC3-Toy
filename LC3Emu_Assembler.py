@@ -3,7 +3,7 @@ from re import compile as reCompile, sub
 from LC3Emu_Util import decToBin, binToDec, bitModified
 
 # Regular opcodes
-OPCODEs = ['ADD', 'AND', 'JMP', 'JSR', 'JSRR', 'LD', 'LDI', 'LDR', 'LEA', 'NOT', 'RET', 'RTI', 'ST', 'STI', 'STR', 'TRAP']
+OPCODEs = ['ADD', 'AND', 'JMP', 'JSR', 'JSRR', 'LDI', 'LDR', 'LD', 'LEA', 'NOT', 'RET', 'RTI', 'STI', 'STR', 'ST', 'TRAP']
 # Branch opcodes
 OPCODEs += ['BRnzp', 'BRnz', 'BRnp', 'BRzp', 'BRn', 'BRz', 'BRp', 'BR']
 # Trap Alias
@@ -15,17 +15,22 @@ OPCODEs += ['.ORIG', '.END', '.FILL', '.BLKW', '.STRINGZ']
 
 # Regex pattern for matching OPCODE
 opCodePattern = '|'.join(OPCODEs).replace('.', '\\.')
+opCodePatternEx = ' |'.join(OPCODEs).replace('.', '\\.')
 
 # Regex pattern for parse assembly line.
-pattern = reCompile(f'(^(?!{opCodePattern})(?P<LABEL>\S+))?\s*(?P<OPCODE>{opCodePattern})?' + '(\s+(?P<OPERANDS>.*))?')
+pattern = reCompile(f'(^(?!{opCodePatternEx})(?P<LABEL>\S+))?\s*(?P<OPCODE>{opCodePattern})?' + '(\s+(?P<OPERANDS>.*))?')
 
 
 def parseNumber(num: Str) -> Int:
-    assert num[0] in ['x', '#']
+    assert num[0] in ['x', '#'] or num[0].isdigit()
     if (num.startswith('x')):
         return int(num[1:], 16)
+    elif (num.startswith('0x')):
+        return int(num[2:], 16)
     elif (num.startswith('#')):
         return int(num[1:])
+    elif (num[0].isdigit()):
+        return int(num)
 
 
 def parseOperands(operand: Str, symbolTable) -> List[Int]:
@@ -34,7 +39,7 @@ def parseOperands(operand: Str, symbolTable) -> List[Int]:
     operandSubs = operand.replace(' ', '').split(',')
     realOperands = []
     for op in operandSubs:
-        if (op[0] == 'R'):
+        if (op[0] == 'R' and op[1].isdigit()):
             realOperands.append(int(op[1]))
         elif (op[0] in ['x', '#']):
             realOperands.append(parseNumber(op))
@@ -49,11 +54,13 @@ def parseOperandsFormat(operand: Str) -> Str:
     return ''.join(['R' if op[0] == 'R' else 'I' for op in operandSubs])
 
 
-def handleDirective(lineDetail: Dict) -> Union[Int, List[Int]]:
+def handleDirective(lineDetail: Dict, symbolTable: Dict) -> Union[Int, List[Int]]:
     if (lineDetail['OPCODE'] == '.FILL'):
+        if (lineDetail['OPERANDS'] in symbolTable):
+            return symbolTable[lineDetail['OPERANDS']]
         return parseNumber(lineDetail['OPERANDS'])
     elif (lineDetail['OPCODE'] == '.BLKW'):
-        return [0 for _ in range(parseNumber(lineDetail['OPERAND']))]
+        return [0 for _ in range(parseNumber(lineDetail['OPERANDS']))]
     elif (lineDetail['OPCODE'] == '.STRINGZ'):
         return [ord(i) for i in lineDetail['OPERANDS'][1:-1]] + [0]
 
@@ -158,12 +165,17 @@ def parseAssembly(asmLines: Str):
         matched = pattern.match(line)
         if (matched == None): continue
         lineDetail = matched.groupdict()
+        # print(lineDetail)
         if (set(lineDetail.values()) == {None}): continue
+        # print(line, '\n', lineDetail)
         # Search for start index and address
         if (lineDetail['OPCODE'] == '.ORIG'):
             assert startAddress == (0, 0x3000)
             startAddress = (len(lineInfos), parseNumber(lineDetail['OPERANDS']))
+        if (lineDetail['LABEL'] != None and lineDetail['LABEL'][-1] == ':'):
+            lineDetail['LABEL'] = lineDetail['LABEL'][:-1]
         # Finish parsing
+        print(lineDetail)
         lineInfos.append(lineDetail)
     # print('>',lineInfos)
     # Build symbols table TODO: Need to be fixed for multi-byte allocation
@@ -178,7 +190,7 @@ def parseAssembly(asmLines: Str):
         elif (lineDetail['OPCODE'] == '.END'):
             break
         elif (lineDetail['OPCODE'].startswith('.')):
-            result = handleDirective(lineDetail)
+            result = handleDirective(lineDetail, symbolTable)
             if (isinstance(result, int)):
                 machineCodes.append(result)
             else:
@@ -186,6 +198,8 @@ def parseAssembly(asmLines: Str):
         else:
             machineCodes.append(handleInstruction(lineDetail, symbolTable, lineDetail['ADDR']))
     print('[' + ','.join([(hex(i)) for i in machineCodes]) + ']')
+    print(len(machineCodes))
+    return machineCodes
 
 
 with open('Test.asm', 'r', encoding='utf-8') as sourceFile:
