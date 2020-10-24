@@ -51,10 +51,8 @@ def handleDirective(lineDetail: Dict) -> Union[Int, List[Int]]:
     if (lineDetail['OPCODE'] == '.FILL'):
         return parseNumber(lineDetail['OPERANDS'])
     elif (lineDetail['OPCODE'] == '.BLKW'):
-        assert False #TODO
         return [0 for _ in range(parseNumber(lineDetail['OPERAND']))]
     elif (lineDetail['OPCODE'] == '.STRINGZ'):
-        assert False #TODO
         return [ord(i) for i in lineDetail['OPERAND'][1:-1]] + [0]
 
 
@@ -73,7 +71,7 @@ def makeInstruction(template: Str, *args: List[Int]) -> Int:
 def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
     operandFormat = parseOperandsFormat(lineDetail['OPERANDS'])
     realOperands = parseOperands(lineDetail['OPERANDS'], symbolTable)
-    print(lineDetail, operandFormat, realOperands, lineno)
+    #print(lineDetail, operandFormat, realOperands, lineno)
     if (lineDetail['OPCODE'] == 'ADD'):
         if (operandFormat == 'RRR'):
             return makeInstruction('0001[0,3~][1,3~]000[2,3~]', *realOperands)
@@ -97,6 +95,26 @@ def handleInstruction(lineDetail: Dict, symbolTable: Dict, lineno: Int) -> Int:
         return makeInstruction('0100000[0,3~]000000', *realOperands)
     elif (lineDetail['OPCODE'] == 'LD'):
         return makeInstruction('0010[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'LDI'):
+        return makeInstruction('1010[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'LDR'):
+        return makeInstruction('0110[0,3~][0,3~][1,6]', realOperands[0], realOperands[1], realOperands[2] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'LEA'):
+        return makeInstruction('1110[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'NOT'):
+        return makeInstruction('1001[0,3~][0,3~]111111', realOperands[0], realOperands[1])
+    elif (lineDetail['OPCODE'] == 'RTI'):
+        return makeInstruction('1000000000000000')
+    elif (lineDetail['OPCODE'] == 'ST'):
+        return makeInstruction('0011[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'STI'):
+        return makeInstruction('1011[0,3~][1,9]', realOperands[0], realOperands[1] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'STR'):
+        return makeInstruction('0111[0,3~][0,3~][1,6]', realOperands[0], realOperands[1], realOperands[2] - lineno - 1)
+    elif (lineDetail['OPCODE'] == 'TRAP'):
+        return makeInstruction('11110000[0,8~]', realOperands[0])
+    elif (lineDetail['OPCODE'] == 'HALT'):
+        return makeInstruction('11110000[0,8~]', 0x25)
     return 0
 
 
@@ -118,19 +136,18 @@ def parseAssembly(asmLines: Str):
             startAddress = (len(lineInfos), parseNumber(lineDetail['OPERANDS']))
         # Finish parsing
         lineInfos.append(lineDetail)
-    # Build symbols table
+    # Build symbols table TODO: Need to be fixed for multi-byte allocation
     symbolTable, offset = {}, 0
     for index, line in enumerate(lineInfos):
-        if line['OPCODE'] in ['.END']: offset -= 1
-        if line['LABEL'] == None: continue
+        if line['LABEL'] is None: continue
         symbolTable[line['LABEL']] = startAddress[1] + (index - startAddress[0]) + offset
     machineCodes = []
     # Translate operation into machine codes
     for index, lineDetail in enumerate(lineInfos):
         if (lineDetail['OPCODE'] == '.ORIG'):
             continue
-        elif (lineDetail['OPCODE'] == '.END'): #TODO
-            continue
+        elif (lineDetail['OPCODE'] == '.END'):
+            break
         elif (lineDetail['OPCODE'].startswith('.')):
             result = handleDirective(lineDetail)
             if (isinstance(result, int)):
@@ -139,8 +156,8 @@ def parseAssembly(asmLines: Str):
                 machineCodes += result
         else:
             machineCodes.append(handleInstruction(lineDetail, symbolTable, startAddress[1] + (index - startAddress[0])))
-    print([print(decToBin(i, 16, True)) for i in machineCodes])
+    [print(hex(i)) for i in machineCodes]
 
 
-with open('Test2.asm', 'r') as sourceFile:
+with open('Test.asm', 'r') as sourceFile:
     parseAssembly(sourceFile.read())
