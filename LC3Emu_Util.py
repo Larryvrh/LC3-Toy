@@ -9,9 +9,9 @@ def fill(string: Str, char: Str, size: Int, reverse=False) -> Str:
     length = len(string)
     if size <= length: return string
     if not reverse:
-        return ''.join([char for _ in range(size - length)]) + string
+        return char * (size - length) + string
     else:
-        return string + ''.join([char for _ in range(size - length)])
+        return string + char * (size - length)
 
 
 def decToBin(num: Int, fillTo: Int = -1, unsigned=False) -> Str:
