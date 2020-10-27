@@ -1,4 +1,4 @@
-from EmuUtil import *
+from LC3Emu_Util import *
 from re import sub, Pattern
 from re import compile as reCompile
 
@@ -136,6 +136,7 @@ class Processor:
     def operationLD(self):
         instruction = self.instruction
         self.writeRegister(instruction['DR'], self.memory.read(self.PC + instruction['PCoffset9']))
+        self.setcc()
 
     def operationAND(self):
         instruction = self.instruction
@@ -215,6 +216,7 @@ class Processor:
         while (True):
             self.cycleStageFetch()
             self.cycleStageDecode()
+            # print(self.instruction)
             if (self.instruction['OPCODE'] == '1111'):
                 break
             self.cycleStageEvaluateAddress()
@@ -223,27 +225,16 @@ class Processor:
             self.cycleStageStore()
 
 
-memoryT = Memory()
-processor = Processor(memoryT)
-memoryT.write(0x3000, 0b0010001000000110)
-memoryT.write(0x3001, 0b0010010000000110)
-memoryT.write(0x3002, 0b0101011011100000)
-memoryT.write(0x3003, 0b0001011011000001)
-memoryT.write(0x3004, 0b0001010010111111)
-memoryT.write(0x3005, 0b0000101111111101)
-memoryT.write(0x3006, 0b1111000000000000)
-
-from time import time
-from random import randint
-
-start = time()
-for i in range(1000):
-    n1, n2 = randint(-180, 180), randint(10, 180)
-    memoryT.write(0x3007, n1)
-    memoryT.write(0x3008, n2)
-    processor.PC = 0x3000
+def speedTest():
+    from time import time
+    startTime = time()
+    tempMemory = Memory()
+    processor = Processor(tempMemory)
+    for offset, inst in enumerate([0x2406, 0x2206, 0x127f, 0x7fe, 0x14bf, 0x7fb, 0xf025, 0xa, 0x7fff]):
+        tempMemory.write(0x3000 + offset, inst)
     processor.run()
-    assert processor.readRegister(3) == n1 * n2
-    # print(processor.readRegister(3))
-    # print(processor.readRegister(2))
-print(time() - start)
+    timeCost = time() - startTime
+    print(f"Speed:{int(710930/timeCost/1000)} kHz")
+
+
+speedTest()
