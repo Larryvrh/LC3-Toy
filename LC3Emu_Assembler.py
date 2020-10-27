@@ -23,14 +23,14 @@ pattern = reCompile(f'(^(?!{opCodePatternEx})(?P<LABEL>\S+))?\s*(?P<OPCODE>{opCo
 
 
 def parseNumber(num: Str) -> Int:
-    assert num[0] in ['x', '#'] or num[0].isdigit()
+    assert num[0] in ['x', '#', '-'] or num[0].isdigit()
     if num.startswith('x'):
         return int(num[1:], 16)
     elif num.startswith('0x'):
         return int(num[2:], 16)
     elif num.startswith('#'):
         return int(num[1:])
-    elif num[0].isdigit():
+    elif num[0].isdigit() or num[0] == '-':
         return int(num)
 
 
@@ -159,10 +159,11 @@ def buildAddressTable(lineInfos: Dict):
         lineDetail['ADDR'] += (baseAddr[1] - baseAddr[0])
         if lineDetail['LABEL'] is not None:
             symbolTable[lineDetail['LABEL']] = lineDetail['ADDR']
+    symbolTable['_PROGRAM_ENTRY_ADDR_'] = baseAddr[1]
     return symbolTable
 
 
-def parseAssembly(asmLines: Str):
+def parseAssembly(asmLines: Str) -> Tuple[List, Dict[Str, Int]]:
     # Clean out the comment information
     asmLines = sub('\s*;.*', '', asmLines)
     # Split code into lines
@@ -180,10 +181,12 @@ def parseAssembly(asmLines: Str):
         if lineDetail['LABEL'] in OPCODEs:
             lineDetail['OPCODE'] = lineDetail['LABEL']
             lineDetail['LABEL'] = None
+        if lineDetail['OPCODE'] == '.STRINGZ':
+            lineDetail['OPERANDS'] = lineDetail['OPERANDS'].replace('\\n', '\n')
         # Finish parsing
         lineInfos.append(lineDetail)
     # print('>',lineInfos)
-    # Build symbols table TODO: Need to be fixed for multi-byte allocation
+    # Build symbols table
     symbolTable = buildAddressTable(lineInfos)
     machineCodes = []
     # Translate operation into machine codes
@@ -202,10 +205,20 @@ def parseAssembly(asmLines: Str):
                 machineCodes += result
         else:
             machineCodes.append(handleInstruction(lineDetail, symbolTable, lineDetail['ADDR']))
-    print('[' + ','.join([(hex(i)) for i in machineCodes]) + ']')
-    print({k:hex(v) for k,v in symbolTable.items()})
-    return machineCodes
+    return machineCodes, symbolTable
+
+//TODO: Need to fix to_bytes for negative values.
+def compileAsmFile(filePath: str):
+    with open(filePath, 'r', encoding='utf-8') as sourceFile:
+        machineCodes, symbolTable = parseAssembly(sourceFile.read())
+        print([hex(i) for i in machineCodes])
+        resultBytes = []
+        resultBytes.append(symbolTable['_PROGRAM_ENTRY_ADDR_'].to_bytes(2, 'big', signed=False))
+        resultBytes += [i.to_bytes(2, 'big', signed=False) for i in machineCodes]
+    with open('Bin\\' + filePath.split('.')[0] + '.obj', 'wb') as binFile:
+        binFile.write(b''.join(resultBytes))
 
 
-with open('Test.asm', 'r', encoding='utf-8') as sourceFile:
-    parseAssembly(sourceFile.read())
+compileAsmFile('RecursiveFib.asm')
+with open('Bin\\RecursiveFib.obj', 'rb') as binFile:
+    print(binFile.read())
